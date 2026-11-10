@@ -120,17 +120,17 @@
     var qs = (n + quiet * 2) * cell, capH = 200;
     var cv = document.createElement('canvas'); cv.width = qs; cv.height = qs + capH;
     var g = cv.getContext('2d');
-    g.fillStyle = '#C8102E'; g.fillRect(0, 0, cv.width, cv.height);
-    g.fillStyle = '#FFD100'; g.fillRect(0, 0, cv.width, 16);
+    g.fillStyle = '#6E1422'; g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = '#C4A574'; g.fillRect(0, 0, cv.width, 8);
     g.fillStyle = '#fff';
     var pad = quiet * cell;
     g.fillRect(pad - 8, pad - 8, qs - (pad - 8) * 2, qs - (pad - 8) * 2);
     g.fillStyle = '#1A0A0A';
     for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) g.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
-    g.fillStyle = '#FFD100';
-    g.font = '800 48px Trebuchet MS, Arial, sans-serif'; g.textAlign = 'center';
+    g.fillStyle = '#C4A574';
+    g.font = '500 48px Palatino, Georgia, serif'; g.textAlign = 'center';
     g.fillText(caption || NAME, qs / 2, qs + 70);
-    g.font = '700 36px Trebuchet MS, Arial, sans-serif';
+    g.font = '500 32px Palatino, Georgia, serif';
     g.fillText(sub || fmtPhone(PHONE), qs / 2, qs + 130);
     return cv.toDataURL('image/png');
   }
