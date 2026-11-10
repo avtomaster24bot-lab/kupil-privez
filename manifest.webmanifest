@@ -1,0 +1,31 @@
+{
+  "name": "Купил — Привёз",
+  "short_name": "Купил-Привёз",
+  "description": "Купил — Привёз — грузоперевозки до 3 т. По городу, пригород, межгород. Заказ в WhatsApp за несколько нажатий.",
+  "id": "/kupil-privez/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#C8102E",
+  "theme_color": "#C8102E",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
