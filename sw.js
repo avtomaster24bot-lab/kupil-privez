@@ -1,10 +1,14 @@
 /* Купил — Привёз service worker. Удаляем только свои кэши kupil-privez-*:
    кэши vezu-platform-* и vezu-static-* на том же домене не трогаем. */
-var CACHE = 'kupil-privez-v3';
+var CACHE = 'kupil-privez-v4';
 var SHELL = ['./', 'index.html', 'card.html', 'privacy.html', 'css/style.css', 'js/config.js', 'js/app.js',
   'js/vendor/qrcode.js', 'favicon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/apple-touch-icon.png', 'img/van.jpg', 'img/van.webp', 'img/og.jpg',
-  'fonts/playfair.woff2', 'fonts/playfair-italic.woff2', 'fonts/franklin.woff2'];
+  'fonts/playfair.woff2', 'fonts/playfair-italic.woff2', 'fonts/franklin.woff2',
+  'js/geo.js', 'js/vendor/leaflet/leaflet.js', 'js/vendor/leaflet/leaflet.css',
+  'js/vendor/leaflet/images/marker-icon.png', 'js/vendor/leaflet/images/marker-icon-2x.png',
+  'js/vendor/leaflet/images/marker-shadow.png', 'js/vendor/leaflet/images/layers.png',
+  'js/vendor/leaflet/images/layers-2x.png'];
 self.addEventListener('install', function (e) {
   self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(function (c) {

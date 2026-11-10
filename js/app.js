@@ -1,5 +1,6 @@
-/* Купил — Привёз — лендинг и мастер заказа. Данные никуда не отправляются:
-   заказ уходит только когда человек сам открывает WhatsApp или телефон. */
+/* Купил — Привёз — лендинг и мастер заказа.
+   Заказ уходит только когда человек сам открывает WhatsApp или телефон.
+   «Где я» / карта / «Посчитать маршрут» обращаются к Nominatim, OSRM и тайлам OSM — не на наш сервер. */
 (function () {
   'use strict';
   var CFG = window.GV_CFG || {};
@@ -167,7 +168,7 @@
   }
 
   /* ---------- order state ---------- */
-  function blank() { return { step: 1, route: '', cargo: '', cargoOther: '', loaders: null, from: '', to: '', comment: '', km: '', when: '', whenText: '' }; }
+  function blank() { return { step: 1, route: '', cargo: '', cargoOther: '', loaders: null, from: '', to: '', comment: '', km: '', when: '', whenText: '', fromGeo: null, toGeo: null, fromAddr: '', toAddr: '', routeHow: '', routeMsg: '', gisPaste: '' }; }
   var st = blank();
   function load() {
     try { var x = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (x && typeof x === 'object') st = Object.assign(blank(), x); } catch (e) {}
@@ -202,9 +203,90 @@
     ];
     if (e) L.push('Примерно: ' + fmtNum(e.total) + ' ₸');
     if (st.comment) L.push('Комментарий: ' + st.comment);
+    var G = window.KP_GEO;
+    if (G && st.fromGeo) L.push('Откуда 2ГИС: ' + G.gisPoint(st.fromGeo));
+    if (G && st.toGeo) L.push('Куда 2ГИС: ' + G.gisPoint(st.toGeo));
+    if (G && st.fromGeo && st.toGeo) L.push('Маршрут в 2ГИС: ' + G.gisRoute(st.fromGeo, st.toGeo));
+    if (st.gisPaste) L.push('Ссылка 2ГИС: ' + st.gisPaste);
     return L.join('\n');
   }
   function waOrder() { return 'https://wa.me/' + PHONE + '?text=' + encodeURIComponent(orderText()); }
+  function cityHint() {
+    return (st.route === 'city' || st.route === 'suburb') ? (CFG.CITY || 'Караганда') : '';
+  }
+  function gisHref() {
+    var G = window.KP_GEO; if (!G) return '#';
+    if (st.fromGeo && st.toGeo) return G.gisRoute(st.fromGeo, st.toGeo);
+    if (st.toGeo) return G.gisPoint(st.toGeo);
+    if (st.fromGeo) return G.gisPoint(st.fromGeo);
+    return '#';
+  }
+  function sayRoute(text, err) {
+    st.routeMsg = text || '';
+    st.routeErr = !!err;
+    var el = $('routeMsg');
+    if (el) { el.textContent = st.routeMsg; el.hidden = !st.routeMsg; el.classList.toggle('err', !!err); }
+  }
+  function setBusy(sel, on, label, busyLabel) {
+    var b = document.querySelector(sel); if (!b) return;
+    b.disabled = !!on; b.textContent = on ? (busyLabel || 'Ищу…') : (label || b.textContent);
+  }
+  function applyLocate(which) {
+    var G = window.KP_GEO;
+    if (!G) { sayRoute('Карта не загрузилась. Обновите страницу.', true); return; }
+    var sel = '[data-geo="' + which + '"]';
+    setBusy(sel, true, 'Где я', 'Ищу…');
+    sayRoute('');
+    G.locate(function (err, res) {
+      setBusy(sel, false, 'Где я');
+      if (err) { sayRoute(err.message, true); save(); return; }
+      st[which] = res.addr;
+      st[which + 'Geo'] = { lat: res.lat, lon: res.lon };
+      st[which + 'Addr'] = res.addr;
+      save(); renderStep();
+    });
+  }
+  function applyMap(res) {
+    if (res.fromGeo) { st.fromGeo = res.fromGeo; st.from = res.from || st.from; st.fromAddr = st.from; }
+    if (res.toGeo) { st.toGeo = res.toGeo; st.to = res.to || st.to; st.toAddr = st.to; }
+    save(); renderStep();
+  }
+  function measureRoute() {
+    var G = window.KP_GEO;
+    if (!G) { sayRoute('Карта не загрузилась. Обновите страницу.', true); return; }
+    syncFields();
+    var f = (st.from || '').trim(), tw = (st.to || '').trim();
+    if (!f || !tw) { sayRoute('Укажите «Откуда» и «Куда» — или введите километры вручную.', true); return; }
+    var btn = document.querySelector('[data-route-calc]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Считаю…'; }
+    sayRoute('Считаю маршрут…');
+    var city = cityHint();
+    var pa = (st.fromGeo && st.fromAddr === f) ? Promise.resolve(st.fromGeo) : G.geocode(f, city);
+    pa.then(function (a) {
+      var pb = (st.toGeo && st.toAddr === tw) ? Promise.resolve(st.toGeo) : new Promise(function (ok) { setTimeout(ok, 1100); }).then(function () { return G.geocode(tw, city); });
+      return pb.then(function (b) { return [a, b]; });
+    }).then(function (ab) {
+      return G.routeKm(ab[0], ab[1]).then(function (r) {
+        st.fromGeo = ab[0]; st.toGeo = ab[1];
+        st.fromAddr = f; st.toAddr = tw;
+        st.km = String(Math.max(1, Math.round(r.km)));
+        st.routeHow = r.how;
+        st.routeMsg = r.how === 'route'
+          ? ('Маршрут: ' + st.km + ' км по дорогам')
+          : ('Примерно ' + st.km + ' км (по прямой × 1,3) — маршрут не построился.');
+        st.routeErr = false;
+        save(); renderStep();
+      });
+    }).catch(function () {
+      st.routeHow = '';
+      sayRoute('Не нашли адрес на карте — введите расстояние в км вручную.', true);
+      save();
+      var k = $('kmIn'); if (k) k.focus();
+    }).then(function () {
+      var b2 = document.querySelector('[data-route-calc]');
+      if (b2) { b2.disabled = false; b2.textContent = 'Посчитать маршрут'; }
+    });
+  }
 
   function chips(list, key, extra) {
     return list.map(function (x) {
@@ -251,10 +333,20 @@
       h = '<h2 class="step-h">Откуда и куда?</h2>' +
         '<label class="fld"><span>Откуда</span>' + placeChips('from', FROM_PLACES) +
         '<input class="inp" id="from" maxlength="120" value="' + esc(st.from) + '" placeholder="Адрес или район"></label>' +
+        '<div class="geo-actions">' +
+        '<button type="button" class="btn btn-ghost" data-geo="from">Где я</button>' +
+        '<button type="button" class="btn btn-ghost" data-open-map>Указать на карте</button></div>' +
         '<label class="fld"><span>Куда</span>' + placeChips('to', TO_PLACES) +
         '<input class="inp" id="to" maxlength="120" value="' + esc(st.to) + '" placeholder="Адрес или район"></label>' +
+        '<div class="geo-actions">' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-geo="to">Где я</button></div>' +
+        '<div class="geo-actions">' +
+        '<button type="button" class="btn btn-yel" data-route-calc>Посчитать маршрут</button>' +
+        '<a class="btn btn-ghost" id="gisOpen" href="' + esc(gisHref()) + '" target="_blank" rel="noopener"' + (gisHref() === '#' ? ' hidden' : '') + '>Открыть в 2ГИС</a></div>' +
+        (st.routeMsg ? '<p class="route-msg' + (st.routeErr ? ' err' : '') + '" id="routeMsg">' + esc(st.routeMsg) + '</p>' : '<p class="route-msg" id="routeMsg" hidden></p>') +
+        '<label class="fld"><span>Или вставьте ссылку из 2ГИС</span><input class="inp" id="gisPaste" maxlength="400" value="' + esc(st.gisPaste || '') + '" placeholder="go.2gis.com или 2gis.kz"></label>' +
         '<label class="fld"><span>Комментарий <em style="font-style:normal;color:var(--muted);font-weight:600">необязательно</em></span><textarea class="inp" id="comment" maxlength="200" rows="2" placeholder="Этаж, таймаут, хрупкое…">' + esc(st.comment) + '</textarea></label>' +
-        '<p style="font-weight:800;margin:8px 0">Сколько примерно километров?</p>' +
+        '<p class="step-sub">Сколько примерно километров?</p>' +
         '<div class="km-row" id="kms">' + KMS.map(function (n) {
           return '<button type="button" class="chip' + (+st.km === n ? ' on' : '') + '" data-k="km" data-v="' + n + '">' + n + '</button>';
         }).join('') + '</div>' +
@@ -295,9 +387,16 @@
   function syncFields() {
     var o = $('cargoOther'); if (o) st.cargoOther = o.value;
     var w = $('whenText'); if (w) st.whenText = w.value;
-    var f = $('from'); if (f) st.from = f.value;
-    var t = $('to'); if (t) st.to = t.value;
+    var f = $('from'); if (f) {
+      st.from = f.value;
+      if (st.fromAddr && st.from.trim() !== st.fromAddr) { st.fromGeo = null; st.fromAddr = ''; }
+    }
+    var dest = $('to'); if (dest) {
+      st.to = dest.value;
+      if (st.toAddr && st.to.trim() !== st.toAddr) { st.toGeo = null; st.toAddr = ''; }
+    }
     var c = $('comment'); if (c) st.comment = c.value;
+    var gisp = $('gisPaste'); if (gisp) st.gisPaste = gisp.value.trim();
     var k = $('kmIn'); if (k && document.activeElement === k) st.km = k.value.replace(/\D/g, '').slice(0, 4);
     save();
   }
@@ -307,7 +406,11 @@
     if (k === 'need') {
       if (v === '0') st.loaders = 0; else st.loaders = st.loaders && st.loaders !== 0 && st.loaders !== '0' ? st.loaders : 1;
     } else if (k === 'km') { st.km = v; }
-    else st[k] = v;
+    else {
+      st[k] = v;
+      if (k === 'from') { st.fromGeo = null; st.fromAddr = ''; }
+      if (k === 'to') { st.toGeo = null; st.toAddr = ''; }
+    }
     save(); renderStep();
   }
 
@@ -323,6 +426,15 @@
   function bindWizard() {
     var box = $('wizard'); if (!box || box._gv) return; box._gv = true;
     box.addEventListener('click', function (e) {
+      var geoBtn = e.target.closest && e.target.closest('[data-geo]');
+      if (geoBtn) { e.preventDefault(); applyLocate(geoBtn.getAttribute('data-geo')); return; }
+      if (e.target.closest && e.target.closest('[data-open-map]')) {
+        e.preventDefault();
+        if (!window.KP_GEO) { sayRoute('Карта не загрузилась. Обновите страницу.', true); return; }
+        window.KP_GEO.openMap({ from: st.from, to: st.to, fromGeo: st.fromGeo, toGeo: st.toGeo, onDone: applyMap });
+        return;
+      }
+      if (e.target.closest && e.target.closest('[data-route-calc]')) { e.preventDefault(); measureRoute(); return; }
       if (e.target.closest && e.target.closest('[data-k]')) return onStepClick(e);
       if (e.target.closest && e.target.closest('#backBtn')) {
         syncFields();

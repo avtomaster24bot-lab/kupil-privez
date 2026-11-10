@@ -174,3 +174,26 @@ body.mode-order .foot{display:none}
 
 .places{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px}
 .places .chip{--h:48px;min-height:var(--h);padding:8px 16px;font-size:15px;font-weight:600;flex:0 1 auto;box-shadow:none}
+
+.step-sub{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
+.geo-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.geo-actions .btn{--h:48px;font-size:14px;flex:1 1 140px;letter-spacing:.04em;box-shadow:none}
+.geo-actions .btn-sm{--h:44px;font-size:13px;flex:0 1 auto;min-width:40%}
+.geo-actions .btn[hidden]{display:none}
+.route-msg{margin:0 0 14px;font-size:14px;color:var(--muted);font-weight:450;line-height:1.45}
+.route-msg.err{color:var(--crimson)}
+body.map-open{overflow:hidden}
+.map-bg{position:fixed;inset:0;z-index:100;background:rgba(28,22,20,.5);display:flex;align-items:flex-end;justify-content:center}
+.map-bg[hidden]{display:none}
+.map-sheet{position:relative;width:100%;max-width:560px;max-height:96vh;overflow:auto;background:var(--ivory);border-radius:16px 16px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -24px 50px rgba(28,22,20,.2)}
+@media (min-width:600px){.map-bg{align-items:center}.map-sheet{border-radius:12px;max-height:90vh}}
+.map-sheet h2{font-family:var(--serif);font-size:24px;font-weight:500;color:var(--crimson);margin:0 44px 12px 0;letter-spacing:-.02em}
+.map-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.map-modes button{--h:48px;min-height:var(--h);border:1px solid var(--line);background:var(--paper);border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;color:var(--ink)}
+.map-modes button.on{background:var(--crimson);color:var(--ivory);border-color:var(--crimson)}
+.map-canvas{height:52vh;min-height:280px;border-radius:2px;box-shadow:inset 0 0 0 1px rgba(196,165,116,.45);background:#e6e1d8}
+.map-hint,.map-status{font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.4}
+.map-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.map-actions .btn{--h:52px}
+.kp-pin{background:none!important;border:0!important}
+.kp-pin-dot{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;color:#fff;font:700 13px/1 "Libre Franklin",system-ui,sans-serif;box-shadow:0 4px 12px rgba(28,22,20,.28)}
