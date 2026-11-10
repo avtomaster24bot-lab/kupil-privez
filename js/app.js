@@ -154,8 +154,10 @@
   /* ---------- calculator ---------- */
   function ratesFor(route) { return (CFG.RATES && CFG.RATES[route]) || CFG.RATES.city; }
   function estimate(st) {
-    var R = ratesFor(st.route || 'city'), km = Math.max(0, +st.km || 0);
+    if (!st.route || st.route === 'unknown' || !CFG.RATES || !CFG.RATES[st.route]) return null;
+    var R = ratesFor(st.route), km = Math.max(0, +st.km || 0);
     if (!km) return null;
+    if (st.loaders === 'unknown') return null;
     var inc = R.inc || 0, base = R.min + Math.max(0, km - inc) * R.km;
     var loaders = +st.loaders || 0, extra = loaders * (CFG.RATES.loader || 0);
     var total = Math.round((base + extra) / 500) * 500;
@@ -163,45 +165,57 @@
   }
   function priceHtml(st) {
     var e = estimate(st);
-    if (!e) return '<div class="price"><b>Укажите км</b><small>Примерная цена появится сразу</small></div>';
+    if (!e) return '<div class="price soft" id="priceBox"><b>Цену уточним по телефону</b><small>Можно не указывать километры — отправьте заказ, и мы посчитаем.</small></div>';
     return '<div class="price" id="priceBox"><b>Примерно ' + fmtNum(e.total) + ' ₸</b><small>Ориентир, не счёт. Точную сумму согласуем в WhatsApp.</small></div>';
   }
 
   /* ---------- order state ---------- */
-  function blank() { return { step: 1, route: '', cargo: '', cargoOther: '', loaders: null, from: '', to: '', comment: '', km: '', when: '', whenText: '', fromGeo: null, toGeo: null, fromAddr: '', toAddr: '', routeHow: '', routeMsg: '', gisPaste: '' }; }
+  function blank() { return { step: 1, route: '', cargo: '', cargoOther: '', loaders: null, from: '', to: '', comment: '', km: '', kmUnknown: false, addrUnknown: false, when: '', whenText: '', fromGeo: null, toGeo: null, fromAddr: '', toAddr: '', routeHow: '', routeMsg: '', gisPaste: '' }; }
   var st = blank();
   function load() {
     try { var x = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (x && typeof x === 'object') st = Object.assign(blank(), x); } catch (e) {}
   }
   function save() { try { sessionStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
 
-  function labelRoute() { var x = ROUTES.filter(function (r) { return r.id === st.route; })[0]; return x ? x.t.toLowerCase() : '—'; }
+  function isUnknown(v) { return (!v && v !== 0) || v === 'unknown'; }
+  function labelRoute() {
+    if (isUnknown(st.route)) return 'не указано';
+    var x = ROUTES.filter(function (r) { return r.id === st.route; })[0]; return x ? x.t.toLowerCase() : 'не указано';
+  }
   function labelCargo() {
-    if (st.cargo === 'other') return (st.cargoOther || 'Другое').trim();
-    var x = CARGO.filter(function (r) { return r.id === st.cargo; })[0]; return x ? x.t : '—';
+    if (isUnknown(st.cargo)) return 'не указано';
+    if (st.cargo === 'other') return (st.cargoOther || 'Другое').trim() || 'не указано';
+    var x = CARGO.filter(function (r) { return r.id === st.cargo; })[0]; return x ? x.t : 'не указано';
   }
   function labelLoaders() {
+    if (st.loaders === null || st.loaders === '' || st.loaders === 'unknown') return 'не указано';
     if (st.loaders === 0 || st.loaders === '0') return 'не нужны';
     if (st.loaders === '4+') return '4 и больше';
     return String(st.loaders);
   }
   function labelWhen() {
-    if (st.when === 'other') return (st.whenText || 'в другой день').trim();
-    var x = WHEN.filter(function (r) { return r.id === st.when; })[0]; return x ? x.t.toLowerCase() : '—';
+    if (isUnknown(st.when)) return 'не указано';
+    if (st.when === 'other') return (st.whenText || 'в другой день').trim() || 'не указано';
+    var x = WHEN.filter(function (r) { return r.id === st.when; })[0]; return x ? x.t.toLowerCase() : 'не указано';
   }
+  function labelFrom() { return (st.from || '').trim() || 'не указано'; }
+  function labelTo() { return (st.to || '').trim() || 'не указано'; }
+  function labelKm() { return st.km ? st.km + ' км' : 'не знает'; }
+  function labelKmWa() { return st.km ? st.km + ' км' : 'клиент не знает, уточнить'; }
   function orderText() {
     var e = estimate(st);
     var L = [
       'Заказ Купил — Привёз',
       'Маршрут: ' + labelRoute(),
-      'Откуда: ' + (st.from || '—'),
-      'Куда: ' + (st.to || '—'),
+      'Откуда: ' + labelFrom(),
+      'Куда: ' + labelTo(),
       'Груз: ' + labelCargo(),
       'Грузчики: ' + (st.loaders === 0 || st.loaders === '0' ? 'нет' : labelLoaders()),
       'Когда: ' + labelWhen(),
-      'Дистанция: ' + (st.km ? st.km + ' км' : '—')
+      'Дистанция: ' + labelKmWa()
     ];
     if (e) L.push('Примерно: ' + fmtNum(e.total) + ' ₸');
+    else L.push('Примерно: цену уточним по телефону');
     if (st.comment) L.push('Комментарий: ' + st.comment);
     var G = window.KP_GEO;
     if (G && st.fromGeo) L.push('Откуда 2ГИС: ' + G.gisPoint(st.fromGeo));
@@ -243,12 +257,13 @@
       st[which] = res.addr;
       st[which + 'Geo'] = { lat: res.lat, lon: res.lon };
       st[which + 'Addr'] = res.addr;
+      st.addrUnknown = false;
       save(); renderStep();
     });
   }
   function applyMap(res) {
-    if (res.fromGeo) { st.fromGeo = res.fromGeo; st.from = res.from || st.from; st.fromAddr = st.from; }
-    if (res.toGeo) { st.toGeo = res.toGeo; st.to = res.to || st.to; st.toAddr = st.to; }
+    if (res.fromGeo) { st.fromGeo = res.fromGeo; st.from = res.from || st.from; st.fromAddr = st.from; st.addrUnknown = false; }
+    if (res.toGeo) { st.toGeo = res.toGeo; st.to = res.to || st.to; st.toAddr = st.to; st.addrUnknown = false; }
     save(); renderStep();
   }
   function measureRoute() {
@@ -270,6 +285,7 @@
         st.fromGeo = ab[0]; st.toGeo = ab[1];
         st.fromAddr = f; st.toAddr = tw;
         st.km = String(Math.max(1, Math.round(r.km)));
+        st.kmUnknown = false;
         st.routeHow = r.how;
         st.routeMsg = r.how === 'route'
           ? ('Маршрут: ' + st.km + ' км по дорогам')
@@ -304,6 +320,9 @@
     return '<div class="step-nav"><button type="button" class="btn btn-sm" id="backBtn">Назад</button>' +
       (nextLabel ? '<button type="button" class="btn btn-yel" id="nextBtn"' + (nextEnabled ? '' : ' disabled') + '>' + esc(nextLabel) + '</button>' : '<span></span>') + '</div>';
   }
+  function skipBtn(label, kind, on) {
+    return '<button type="button" class="btn btn-ghost skip-act' + (on ? ' on' : '') + '" data-skip="' + kind + '"' + (on ? ' aria-pressed="true"' : '') + '>' + esc(label) + '</button>';
+  }
 
   function renderStep() {
     var root = $('step'); if (!root) return;
@@ -312,23 +331,25 @@
     if (p) p.innerHTML = dots;
     var h = '';
     if (st.step === 1) {
-      h = '<h2 class="step-h">Куда везём?</h2><div class="choice">' + chips(ROUTES, 'route') + '</div>' + nav('Дальше', !!st.route);
+      h = '<h2 class="step-h">Куда везём?</h2><div class="choice">' + chips(ROUTES, 'route') + '</div>' +
+        skipBtn('Не знаю', 'route', st.route === 'unknown') + nav('Дальше', true);
     } else if (st.step === 2) {
       h = '<h2 class="step-h">Что везём?</h2><div class="choice grid2">' + chips(CARGO, 'cargo') + '</div>' +
         '<label class="fld other' + (st.cargo === 'other' ? ' show' : '') + '" id="otherBox"><span>Опишите груз</span><input class="inp" id="cargoOther" maxlength="80" value="' + esc(st.cargoOther) + '" placeholder="Например, пианино"></label>' +
-        nav('Дальше', !!st.cargo && (st.cargo !== 'other' || !!st.cargoOther.trim()));
+        skipBtn('Не знаю, что везём', 'cargo', st.cargo === 'unknown') + nav('Дальше', true);
     } else if (st.step === 3) {
-      var need = st.loaders !== null && st.loaders !== 0 && st.loaders !== '0';
+      var need = st.loaders !== null && st.loaders !== 0 && st.loaders !== '0' && st.loaders !== 'unknown';
       h = '<h2 class="step-h">Грузчики?</h2><div class="choice btns-2">' +
         '<button type="button" class="chip' + (st.loaders === 0 || st.loaders === '0' ? ' on' : '') + '" data-k="need" data-v="0">Не нужны</button>' +
-        '<button type="button" class="chip' + (need ? ' on' : '') + '" data-k="need" data-v="yes">Нужны</button></div>';
+        '<button type="button" class="chip' + (need ? ' on' : '') + '" data-k="need" data-v="yes">Нужны</button></div>' +
+        skipBtn('Не знаю', 'loaders', st.loaders === 'unknown');
       if (need) {
-        h += '<p style="font-weight:800;margin:16px 0 8px">Сколько?</p><div class="choice grid2">' +
+        h += '<p class="step-sub">Сколько?</p><div class="choice grid2">' +
           [1, 2, 3, '4+'].map(function (n) {
             return '<button type="button" class="chip' + (String(st.loaders) === String(n) ? ' on' : '') + '" data-k="loaders" data-v="' + n + '">' + n + '</button>';
           }).join('') + '</div>';
       }
-      h += nav('Дальше', st.loaders !== null && st.loaders !== '' && (st.loaders === 0 || st.loaders === '0' || st.loaders));
+      h += nav('Дальше', true);
     } else if (st.step === 4) {
       h = '<h2 class="step-h">Откуда и куда?</h2>' +
         '<label class="fld"><span>Откуда</span>' + placeChips('from', FROM_PLACES) +
@@ -340,6 +361,7 @@
         '<input class="inp" id="to" maxlength="120" value="' + esc(st.to) + '" placeholder="Адрес или район"></label>' +
         '<div class="geo-actions">' +
         '<button type="button" class="btn btn-ghost btn-sm" data-geo="to">Где я</button></div>' +
+        skipBtn('Не знаю адрес', 'addr', !!st.addrUnknown) +
         '<div class="geo-actions">' +
         '<button type="button" class="btn btn-yel" data-route-calc>Посчитать маршрут</button>' +
         '<a class="btn btn-ghost" id="gisOpen" href="' + esc(gisHref()) + '" target="_blank" rel="noopener"' + (gisHref() === '#' ? ' hidden' : '') + '>Открыть в 2ГИС</a></div>' +
@@ -351,23 +373,24 @@
           return '<button type="button" class="chip' + (+st.km === n ? ' on' : '') + '" data-k="km" data-v="' + n + '">' + n + '</button>';
         }).join('') + '</div>' +
         '<label class="fld"><span>Или своё число</span><input class="inp" id="kmIn" inputmode="numeric" maxlength="5" value="' + esc(st.km) + '" placeholder="км"></label>' +
-        priceHtml(st) + nav('Дальше', !!(st.from.trim() && st.to.trim() && +st.km > 0));
+        skipBtn('Не знаю сколько км', 'km', !!st.kmUnknown && !st.km) +
+        priceHtml(st) + nav('Дальше', true);
     } else if (st.step === 5) {
       h = '<h2 class="step-h">Когда?</h2><div class="choice">' + chips(WHEN, 'when') + '</div>' +
         '<label class="fld other' + (st.when === 'other' ? ' show' : '') + '" id="whenBox"><span>День и время</span><input class="inp" id="whenText" maxlength="60" value="' + esc(st.whenText) + '" placeholder="Например, 12 ноября, 14:00"></label>' +
-        nav('К заказу', !!st.when && (st.when !== 'other' || !!st.whenText.trim()));
+        skipBtn('Не знаю, когда', 'when', st.when === 'unknown') + nav('К заказу', true);
     } else {
       var e = estimate(st);
       h = '<h2 class="step-h">Проверьте заказ</h2><div class="review">' +
-        [['Маршрут', labelRoute()], ['Откуда', st.from], ['Куда', st.to], ['Груз', labelCargo()],
-          ['Грузчики', st.loaders === 0 || st.loaders === '0' ? 'не нужны' : labelLoaders()],
-          ['Когда', labelWhen()], ['Дистанция', st.km + ' км'],
-          ['Примерно', e ? fmtNum(e.total) + ' ₸' : '—']].map(function (row) {
+        [['Маршрут', labelRoute()], ['Откуда', labelFrom()], ['Куда', labelTo()], ['Груз', labelCargo()],
+          ['Грузчики', labelLoaders()],
+          ['Когда', labelWhen()], ['Дистанция', labelKm()],
+          ['Примерно', e ? fmtNum(e.total) + ' ₸' : 'цену уточним по телефону']].map(function (row) {
           return '<dl><dt>' + esc(row[0]) + '</dt><dd>' + esc(row[1]) + '</dd></dl>';
         }).join('') +
         (st.comment ? '<dl><dt>Комментарий</dt><dd>' + esc(st.comment) + '</dd></dl>' : '') +
         '</div>' +
-        '<p class="muted" style="text-align:center;font-weight:700;margin-bottom:12px">Ориентир, не счёт. Точную сумму согласуем в WhatsApp.</p>' +
+        '<p class="muted" style="text-align:center;font-weight:500;margin-bottom:12px">' + (e ? 'Ориентир, не счёт. Точную сумму согласуем в WhatsApp.' : 'Не все данные указаны — это нормально. Напишите нам, уточним по телефону.') + '</p>' +
         '<div class="btns">' +
         '<a class="btn btn-wa btn-block" id="waSend" href="' + esc(waOrder()) + '" target="_blank" rel="noopener">Отправить в WhatsApp</a>' +
         '<a class="btn btn-call btn-block" href="tel:+' + PHONE + '">Позвонить</a>' +
@@ -376,23 +399,41 @@
     root.innerHTML = h;
   }
 
-  function canNext() {
-    if (st.step === 1) return !!st.route;
-    if (st.step === 2) return !!st.cargo && (st.cargo !== 'other' || !!st.cargoOther.trim());
-    if (st.step === 3) return st.loaders !== null && st.loaders !== '';
-    if (st.step === 4) return !!(st.from.trim() && st.to.trim() && +st.km > 0);
-    if (st.step === 5) return !!st.when && (st.when !== 'other' || !!st.whenText.trim());
-    return true;
+  function canNext() { return true; }
+  function markSkipped() {
+    if (st.step === 1 && !st.route) st.route = 'unknown';
+    if (st.step === 2 && !st.cargo) st.cargo = 'unknown';
+    if (st.step === 3 && (st.loaders === null || st.loaders === '')) st.loaders = 'unknown';
+    if (st.step === 4) {
+      if (!(st.from || '').trim() && !(st.to || '').trim()) st.addrUnknown = true;
+      if (!st.km) st.kmUnknown = true;
+    }
+    if (st.step === 5 && !st.when) st.when = 'unknown';
+  }
+  function applySkip(kind) {
+    syncFields();
+    if (kind === 'route') st.route = 'unknown';
+    if (kind === 'cargo') { st.cargo = 'unknown'; st.cargoOther = ''; }
+    if (kind === 'loaders') st.loaders = 'unknown';
+    if (kind === 'addr') {
+      st.from = ''; st.to = ''; st.fromGeo = null; st.toGeo = null; st.fromAddr = ''; st.toAddr = ''; st.addrUnknown = true;
+    }
+    if (kind === 'km') { st.km = ''; st.kmUnknown = true; }
+    if (kind === 'when') { st.when = 'unknown'; st.whenText = ''; }
+    if (kind === 'addr' || kind === 'km') { save(); renderStep(); return; }
+    st.step = Math.min(6, st.step + 1); save(); renderStep(); window.scrollTo(0, 0);
   }
   function syncFields() {
     var o = $('cargoOther'); if (o) st.cargoOther = o.value;
     var w = $('whenText'); if (w) st.whenText = w.value;
     var f = $('from'); if (f) {
       st.from = f.value;
+      if (st.from.trim()) st.addrUnknown = false;
       if (st.fromAddr && st.from.trim() !== st.fromAddr) { st.fromGeo = null; st.fromAddr = ''; }
     }
     var dest = $('to'); if (dest) {
       st.to = dest.value;
+      if (st.to.trim()) st.addrUnknown = false;
       if (st.toAddr && st.to.trim() !== st.toAddr) { st.toGeo = null; st.toAddr = ''; }
     }
     var c = $('comment'); if (c) st.comment = c.value;
@@ -404,12 +445,13 @@
     var b = e.target.closest && e.target.closest('[data-k]'); if (!b) return;
     var k = b.dataset.k, v = b.dataset.v;
     if (k === 'need') {
-      if (v === '0') st.loaders = 0; else st.loaders = st.loaders && st.loaders !== 0 && st.loaders !== '0' ? st.loaders : 1;
-    } else if (k === 'km') { st.km = v; }
+      if (v === '0') st.loaders = 0;
+      else st.loaders = st.loaders && st.loaders !== 0 && st.loaders !== '0' && st.loaders !== 'unknown' ? st.loaders : 1;
+    } else if (k === 'km') { st.km = v; st.kmUnknown = false; }
     else {
       st[k] = v;
-      if (k === 'from') { st.fromGeo = null; st.fromAddr = ''; }
-      if (k === 'to') { st.toGeo = null; st.toAddr = ''; }
+      if (k === 'from') { st.fromGeo = null; st.fromAddr = ''; st.addrUnknown = false; }
+      if (k === 'to') { st.toGeo = null; st.toAddr = ''; st.addrUnknown = false; }
     }
     save(); renderStep();
   }
@@ -435,6 +477,8 @@
         return;
       }
       if (e.target.closest && e.target.closest('[data-route-calc]')) { e.preventDefault(); measureRoute(); return; }
+      var skip = e.target.closest && e.target.closest('[data-skip]');
+      if (skip) { e.preventDefault(); applySkip(skip.getAttribute('data-skip')); return; }
       if (e.target.closest && e.target.closest('[data-k]')) return onStepClick(e);
       if (e.target.closest && e.target.closest('#backBtn')) {
         syncFields();
@@ -443,6 +487,7 @@
       }
       if (e.target.closest && e.target.closest('#nextBtn')) {
         syncFields(); if (!canNext()) return;
+        markSkipped();
         st.step = Math.min(6, st.step + 1); save(); renderStep(); window.scrollTo(0, 0);
       }
     });
@@ -450,7 +495,7 @@
       var el = e.target, id = el && el.id;
       if (!id) return;
       syncFields();
-      if (id === 'kmIn') { st.km = el.value.replace(/\D/g, '').slice(0, 4); el.value = st.km; var pb = $('priceBox'); if (pb) pb.outerHTML = priceHtml(st); }
+      if (id === 'kmIn') { st.km = el.value.replace(/\D/g, '').slice(0, 4); el.value = st.km; if (st.km) st.kmUnknown = false; var pb = $('priceBox'); if (pb) pb.outerHTML = priceHtml(st); }
       var n = $('nextBtn'); if (n) n.disabled = !canNext();
       save();
     });
