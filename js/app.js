@@ -28,6 +28,8 @@
     { id: 'other', t: 'В другой день' }
   ];
   var KMS = [5, 10, 15, 20, 30, 50, 100];
+  var FROM_PLACES = ['Из центра', 'Центр', 'Майкудук', 'Пришахтинск', 'Юго-Восток'];
+  var TO_PLACES = ['Центр', 'Майкудук', 'Пришахтинск', 'Юго-Восток'];
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -210,6 +212,12 @@
       return '<button type="button" class="chip' + on + ' data-k="' + key + '" data-v="' + esc(x.id) + '">' + esc(x.t) + (x.sub ? '<span class="sub">' + esc(x.sub) + '</span>' : '') + '</button>';
     }).join('') + (extra || '');
   }
+  function placeChips(key, list) {
+    return '<div class="places" role="group">' + list.map(function (name) {
+      var on = st[key] === name ? ' on" aria-pressed="true"' : '" aria-pressed="false"';
+      return '<button type="button" class="chip place' + on + ' data-k="' + key + '" data-v="' + esc(name) + '">' + esc(name) + '</button>';
+    }).join('') + '</div>';
+  }
   function nav(nextLabel, nextEnabled) {
     return '<div class="step-nav"><button type="button" class="btn btn-sm" id="backBtn">Назад</button>' +
       (nextLabel ? '<button type="button" class="btn btn-yel" id="nextBtn"' + (nextEnabled ? '' : ' disabled') + '>' + esc(nextLabel) + '</button>' : '<span></span>') + '</div>';
@@ -241,8 +249,10 @@
       h += nav('Дальше', st.loaders !== null && st.loaders !== '' && (st.loaders === 0 || st.loaders === '0' || st.loaders));
     } else if (st.step === 4) {
       h = '<h2 class="step-h">Откуда и куда?</h2>' +
-        '<label class="fld"><span>Откуда</span><input class="inp" id="from" maxlength="120" value="' + esc(st.from) + '" placeholder="Адрес или район"></label>' +
-        '<label class="fld"><span>Куда</span><input class="inp" id="to" maxlength="120" value="' + esc(st.to) + '" placeholder="Адрес или район"></label>' +
+        '<label class="fld"><span>Откуда</span>' + placeChips('from', FROM_PLACES) +
+        '<input class="inp" id="from" maxlength="120" value="' + esc(st.from) + '" placeholder="Адрес или район"></label>' +
+        '<label class="fld"><span>Куда</span>' + placeChips('to', TO_PLACES) +
+        '<input class="inp" id="to" maxlength="120" value="' + esc(st.to) + '" placeholder="Адрес или район"></label>' +
         '<label class="fld"><span>Комментарий <em style="font-style:normal;color:var(--muted);font-weight:600">необязательно</em></span><textarea class="inp" id="comment" maxlength="200" rows="2" placeholder="Этаж, таймаут, хрупкое…">' + esc(st.comment) + '</textarea></label>' +
         '<p style="font-weight:800;margin:8px 0">Сколько примерно километров?</p>' +
         '<div class="km-row" id="kms">' + KMS.map(function (n) {
